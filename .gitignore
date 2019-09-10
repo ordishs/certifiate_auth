@@ -1,0 +1,7 @@
+.history
+authority
+ca.crt
+
+*.key
+*.csr
+*.crt
