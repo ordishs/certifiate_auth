@@ -13,26 +13,25 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"runtime"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/gorilla/mux"
 )
 
-func userHomeDir() string {
-	if runtime.GOOS == "windows" {
-		home := os.Getenv("HOMEDRIVE") + os.Getenv("HOMEPATH")
-		if home == "" {
-			home = os.Getenv("USERPROFILE")
-		}
-		return home
+var keyFileDirectory = ".minerid"
+var keyFileName = "minerid"
+
+func currentDir() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
 	}
-	return os.Getenv("HOME")
+	return dir
 }
 
 func createKeys() error {
-	homeDir := userHomeDir()
-	keyFileStub := path.Join(homeDir, ".minerid", "minerid")
+	currDir := currentDir()
+	keyFileStub := path.Join(currDir, keyFileDirectory, keyFileName)
 
 	privKey, err := btcec.NewPrivateKey(btcec.S256())
 	if err != nil {
@@ -59,7 +58,7 @@ func createKeys() error {
 
 	b := privKey.Serialize()
 
-	_, err = fmt.Fprintf(keyFile, "%x\n", b)
+	_, err = fmt.Fprintf(keyFile, "%x", b)
 	if err != nil {
 		return err
 	}
@@ -72,7 +71,7 @@ func createKeys() error {
 	defer pubFile.Close()
 
 	b = privKey.PubKey().SerializeCompressed()
-	_, err = fmt.Fprintf(pubFile, "%x\n", b)
+	_, err = fmt.Fprintf(pubFile, "%x", b)
 	if err != nil {
 		return err
 	}
@@ -81,8 +80,8 @@ func createKeys() error {
 }
 
 func signMessage(message []byte) (sig string, err error) {
-	homeDir := userHomeDir()
-	keyFileStub := path.Join(homeDir, ".minerid", "minerid")
+	currDir := currentDir()
+	keyFileStub := path.Join(currDir, keyFileDirectory, keyFileName)
 
 	// Keys
 	keyBytes, err := ioutil.ReadFile(keyFileStub + ".key")
@@ -120,49 +119,72 @@ func signHandler(w http.ResponseWriter, r *http.Request) {
 	hash := mux.Vars(r)["hash"]
 	if hash == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, "ERROR\n")
+		io.WriteString(w, "ERROR")
 		return
 	}
 
 	sig, err := signMessage([]byte(hash))
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		io.WriteString(w, "ERROR\n")
+		io.WriteString(w, "ERROR")
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("%s\n", sig))
+	io.WriteString(w, fmt.Sprintf("%s", sig))
 }
 
 func generateHandler(w http.ResponseWriter, r *http.Request) {
 	err := createKeys()
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		io.WriteString(w, "ERROR\n")
+		io.WriteString(w, "ERROR")
 	} else {
-		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "OK\n")
+		w.WriteHeader(http.StatusCreated)
+		io.WriteString(w, "OK")
 	}
 }
 
 func getHandler(w http.ResponseWriter, r *http.Request) {
-	homeDir := userHomeDir()
-	keyFileStub := path.Join(homeDir, ".minerid", "minerid")
+	currDir := currentDir()
+	keyFileStub := path.Join(currDir, keyFileDirectory, keyFileName)
 
 	keyBytes, err := ioutil.ReadFile(keyFileStub + ".pub")
 	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		io.WriteString(w, "ERROR\n")
+		w.WriteHeader(http.StatusNotFound)
+		io.WriteString(w, "ERROR")
 	} else {
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, fmt.Sprintf("%s\n", keyBytes))
+		io.WriteString(w, fmt.Sprintf("%s", keyBytes))
 	}
+}
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+	currDir := currentDir()
+	keyFileStub := path.Join(currDir, keyFileDirectory, keyFileName)
+
+	// if pub exists remove it
+	if _, err := os.Stat(keyFileStub + ".pub"); err == nil {
+		err := os.Remove(keyFileStub + ".pub")
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			io.WriteString(w, "ERROR")
+		}
+	}
+	// if key exists remove it
+	if _, err := os.Stat(keyFileStub + ".key"); err == nil {
+		err = os.Remove(keyFileStub + ".key")
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			io.WriteString(w, "ERROR")
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+	io.WriteString(w, "OK")
 }
 
 func notFound(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusBadRequest)
-	io.WriteString(w, "BAD\n")
+	w.WriteHeader(http.StatusNotFound)
+	io.WriteString(w, "BAD")
 }
 
 func main() {
@@ -186,9 +208,10 @@ func main() {
 
 	router := mux.NewRouter().StrictSlash(true)
 
-	router.HandleFunc("/generate", generateHandler).Methods("GET")
-	router.HandleFunc("/{hash:[0-9a-fA-F]+}", signHandler).Methods("GET")
-	router.HandleFunc("/", getHandler).Methods("GET")
+	router.HandleFunc("/key", generateHandler).Methods("POST")
+	router.HandleFunc("/key", getHandler).Methods("GET")
+	router.HandleFunc("/key", deleteHandler).Methods("DELETE")
+	router.HandleFunc("/sign/{hash:[0-9a-fA-F]+}", signHandler).Methods("GET")
 	router.NotFoundHandler = http.HandlerFunc(notFound)
 
 	// Create a Server instance to listen on port 8443 with the TLS config
