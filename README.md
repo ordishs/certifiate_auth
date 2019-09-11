@@ -21,7 +21,7 @@ openssl req -new -x509 -key ./authority/ca.key -days 1024 -subj "/CN=localhost" 
 ln -s ./authority/ca.crt .
 ```
 
-### Create a `./authority/cn.cnf` file with the following content:
+### Create a `./authority/ca.conf` file with the following content:
 ```
 # we use 'ca' as the default section because we're usign the ca command
 [ ca ]
