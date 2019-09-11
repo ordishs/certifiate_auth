@@ -153,10 +153,17 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		io.WriteString(w, "ERROR")
-	} else {
-		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, fmt.Sprintf("%s", keyBytes))
+		return
 	}
+
+	// Remove trailing CR...
+	if keyBytes[len(keyBytes)-1] == 0x0a {
+		keyBytes = keyBytes[:len(keyBytes)-1]
+	}
+
+	w.WriteHeader(http.StatusOK)
+	io.WriteString(w, fmt.Sprintf("%s", keyBytes))
+
 }
 func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	currDir := currentDir()
