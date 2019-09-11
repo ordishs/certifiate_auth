@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -165,6 +166,9 @@ func notFound(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	useCerts := flag.Bool("certs", true, "use certificates")
+	port := flag.Int("port", 8443, "port")
+	flag.Parse()
 	// Create a CA certificate pool and add ca.crt to it
 	caCert, err := ioutil.ReadFile("ca.crt")
 	if err != nil {
@@ -189,11 +193,15 @@ func main() {
 
 	// Create a Server instance to listen on port 8443 with the TLS config
 	server := &http.Server{
-		Addr:      "localhost:8443",
+		Addr:      fmt.Sprintf("localhost:%d", *port),
 		TLSConfig: tlsConfig,
 		Handler:   router,
 	}
-
+	if !*useCerts {
+		server.TLSConfig = nil
+		// Listen to HTTPS connections with the server certificate and wait
+		log.Fatal(server.ListenAndServe())
+	}
 	// Listen to HTTPS connections with the server certificate and wait
 	log.Fatal(server.ListenAndServeTLS("ca.crt", "./authority/ca.key"))
 }
